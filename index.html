@@ -115,7 +115,7 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 
 // [name, category, isCompound]
 const LIB = [
-  ['Bench Press (Barbell)','Chest',1],['Bench Press (Dumbbell)','Chest',1],['Incline Dumbbell Press','Chest',1],['Incline Bench Press (Barbell)','Chest',1],['Chest Fly','Chest',0],
+  ['Bench Press (Barbell)','Chest',1],['Bench Press (Dumbbell)','Chest',1],['Incline Dumbbell Press','Chest',1],['Incline Bench Press (Barbell)','Chest',1],['Incline Bench Press (Smith Machine)','Chest',1],['Chest Fly','Chest',0],
   ['Machine Chest Press','Chest',1],['Dips','Chest',1],
   ['Pull-up','Back',1],['Lat Pulldown','Back',1],['Chest-Supported Row','Back',1],['Cable Row','Back',1],
   ['T-Bar Row','Back',1],['Single-Arm Cable Pulldown','Back',0],
@@ -149,7 +149,7 @@ const PLAN = {
     ['Cable Crunch',2,'10-15','','','Or machine crunch'],
   ],
   'Upper B': [
-    ['Incline Bench Press (Barbell)',3,'6-10','1-2','',''],
+    ['Incline Bench Press (Smith Machine)',3,'6-10','1-2','','Log plates only (no bar weight)'],
     ['Chest-Supported Row',3,'8-12','1','','Incline dumbbell row'],
     ['Single-Arm Cable Pulldown',2,'10-15','0','','Or close-grip pulldown'],
     ['Bayesian Cable Curl',3,'10-15','0-1','A','Arm behind you'],
@@ -177,7 +177,7 @@ const PLAN = {
 
 // Built-in exercises and plan templates get fixed ids, so every device agrees on them when syncing
 // Bump when the plan's exercise order changes; saved templates are updated once (history untouched)
-const PLAN_V = 6;
+const PLAN_V = 7;
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const exIdFor = name => 'x-' + slug(name);
 const tplIdFor = name => 't-' + slug(name);
@@ -214,6 +214,8 @@ function migrate(){
     const changed = Object.entries(CHANGED).some(([v, ids]) => +v > from && ids.includes(t.id));
     // v6: single exercise swap, keeps the rest of the template (and any edits) as is
     if(from < 6 && !changed && t.id === 't-lower-b') t.items.forEach(it => { if(it.exId === exIdFor('Lying Leg Curl')){ it.exId = exIdFor('Seated Leg Curl'); S.metaUpdated = Date.now(); } });
+    // v7 (2026-10-24): Upper B incline barbell bench -> incline Smith press, edits kept
+    if(from < 7 && !changed && t.id === 't-upper-b') t.items.forEach(it => { if(it.exId === exIdFor('Incline Bench Press (Barbell)')){ it.exId = exIdFor('Incline Bench Press (Smith Machine)'); it.note = 'Log plates only (no bar weight)'; S.metaUpdated = Date.now(); } });
     if(planName && changed){
       t.items = PLAN[planName].map(([ex,sets,reps,rir,group,note]) => ({exId:exIdFor(ex), sets, reps, rir, group, note}));
       S.metaUpdated = Date.now();
