@@ -196,6 +196,7 @@ function migrate(){
   S.deleted = S.deleted || [];
   if(S.metaUpdated == null) S.metaUpdated = 0;
   S.workouts = S.workouts || [];
+  S.bodyweight = S.bodyweight || [];
   const map = {};
   S.exercises.forEach(e => { if(LIB.some(l => l[0] === e.name)){ const nid = exIdFor(e.name); if(e.id !== nid){ map[e.id] = nid; e.id = nid; } } });
   const seen = new Set(); S.exercises = S.exercises.filter(e => !seen.has(e.id) && seen.add(e.id));
@@ -280,10 +281,13 @@ function mergeData(L, R){
   const newer = (R.metaUpdated||0) > (L.metaUpdated||0) ? R : L, older = newer === R ? L : R;
   const ex = new Map();
   [...(newer.exercises||[]), ...(older.exercises||[])].forEach(e => { if(!ex.has(e.id)) ex.set(e.id, e); });
-  return {...L, version:1, workouts, deleted, exercises:[...ex.values()], templates:newer.templates || L.templates,
+  const bw = new Map();
+  [...(R.bodyweight||[]), ...(L.bodyweight||[])].forEach(e => { const o = bw.get(e.date); if(!o || (e.updated||0) > (o.updated||0)) bw.set(e.date, e); });
+  const bodyweight = [...bw.values()].sort((a,b) => a.date < b.date ? -1 : 1);
+  return {...L, version:1, workouts, deleted, bodyweight, exercises:[...ex.values()], templates:newer.templates || L.templates,
     settings:newer.settings || L.settings, metaUpdated:Math.max(L.metaUpdated||0, R.metaUpdated||0), active:L.active};
 }
-const dataSig = o => JSON.stringify([(o.workouts||[]).map(w => w.id + ':' + (w.updated || w.end || 0)).sort(), (o.deleted||[]).slice().sort(), o.metaUpdated||0, o.exercises, o.templates, o.settings]);
+const dataSig = o => JSON.stringify([(o.bodyweight||[]).map(e => e.date + ':' + (e.updated||0)),(o.workouts||[]).map(w => w.id + ':' + (w.updated || w.end || 0)).sort(), (o.deleted||[]).slice().sort(), o.metaUpdated||0, o.exercises, o.templates, o.settings]);
 async function syncNow(){
   if(!syncOn()) return;
   if(syncing){ syncAgain = true; return; }
@@ -388,7 +392,7 @@ let view = {name:'workout'};
 function go(name, extra = {}){ view = {name, ...extra}; render(); window.scrollTo(0,0); }
 
 function renderTabs(){
-  const t = [['workout', S.active ? 'Workout •' : 'Workout'], ['history','History'], ['exercises','Exercises'], ['settings','Settings']];
+  const t = [['workout', S.active ? 'Workout •' : 'Workout'], ['history','History'], ['weight','Weight'], ['exercises','Exercises'], ['settings','Settings']];
   $('#tabs').innerHTML = t.map(([k,l]) => `<button data-tab="${k}" class="${view.name===k || (k==='exercises' && view.name==='exercise') ? 'on':''}">${l}</button>`).join('');
 }
 function render(){
@@ -402,6 +406,7 @@ function render(){
   else if(v === 'exercise') html = viewExercise(view.id);
   else if(v === 'template') html = viewTemplate(view.id);
   else if(v === 'settings') html = viewSettings();
+  else if(v === 'weight') html = viewWeight();
   $('#app').innerHTML = (storageOK ? '' : `<div class="card" style="border-color:var(--bad)">⚠️ This browser is blocking local storage, so workouts won't be kept. Open the file in Safari or Chrome, or use Export often.</div>`) + html;
   if(v === 'workout' && S.active) tickClock();
   drawSync();
@@ -681,8 +686,8 @@ function viewExercise(id){
     <div class="small">${h.sets.map(s => `${fmtW(s.w)} × ${s.r}${s.rir!==''&&s.rir!=null?` @${s.rir}`:''}`).join(' · ')}</div>${h.e.myNote ? `<div class="small muted">📝 ${esc(h.e.myNote)}</div>` : ''}</div>`).join('')}
   ` : `<div class="empty">No sets logged yet for this exercise.</div>`}`;
 }
-function chart(pts){
-  if(pts.length < 2) return `<div class="empty small">The chart appears after 2 sessions.</div>`;
+function chart(pts, what = 'sessions'){
+  if(pts.length < 2) return `<div class="empty small">The chart appears after 2 ${what}.</div>`;
   const W = 600, H = 180, P = 28;
   const t0 = pts[0].t, t1 = pts[pts.length-1].t;
   let lo = Math.min(...pts.map(p=>p.v)), hi = Math.max(...pts.map(p=>p.v));
@@ -717,6 +722,47 @@ function viewTemplate(id){
     </div>`).join('')}
     <button class="btn ghost" data-act="tpl-add" style="margin-top:8px">+ Add exercise</button>
   </div>`;
+}
+
+/* ============ Bodyweight ============ */
+const isoDay = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+const bwList = () => (S.bodyweight||[]).filter(e => e.kg != null && e.kg !== '').sort((a,b) => a.date < b.date ? -1 : 1);
+function bwAvg(endDate, days){
+  const end = new Date(endDate + 'T12:00:00'), start = new Date(end); start.setDate(start.getDate() - days + 1);
+  const xs = bwList().filter(e => { const d = new Date(e.date + 'T12:00:00'); return d >= start && d <= end; }).map(e => +e.kg);
+  return xs.length ? xs.reduce((a,b) => a+b, 0) / xs.length : null;
+}
+function viewWeight(){
+  const today = isoDay(), list = bwList(), u = S.settings.unit;
+  const todays = list.find(e => e.date === today);
+  const a7 = bwAvg(today, 7), lastWeek = new Date(); lastWeek.setDate(lastWeek.getDate() - 7);
+  const p7 = bwAvg(isoDay(lastWeek), 7);
+  const pts = list.map(e => ({t: new Date(e.date + 'T12:00:00').getTime(), v: +e.kg}));
+  return `<h1>Bodyweight</h1>
+  <div class="card">
+    <div class="row wrap" style="gap:8px;align-items:flex-end">
+      <label style="flex:1;min-width:130px"><span class="small muted">Date</span><input class="txt" type="date" id="bw-date" value="${today}" max="${today}"></label>
+      <label style="flex:1;min-width:100px"><span class="small muted">Weight (${u})</span><input class="txt" id="bw-kg" inputmode="decimal" value="${todays ? esc(todays.kg) : ''}" placeholder="${list.length ? esc(list[list.length-1].kg) : ''}"></label>
+      <button class="btn primary" data-act="bw-save">Save</button>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">Weigh in the morning after the bathroom, before food. Day-to-day jumps are mostly water, so watch the 7-day average.</p>
+  </div>
+  ${list.length ? `
+  <div class="row wrap" style="gap:8px;margin-bottom:12px">
+    <div class="stat"><span class="muted small">7-day average</span><b>${a7 != null ? a7.toFixed(1) + ' ' + u : '—'}</b></div>
+    <div class="stat"><span class="muted small">vs previous 7 days</span><b>${a7 != null && p7 != null ? (a7 - p7 >= 0 ? '+' : '') + (a7 - p7).toFixed(1) + ' ' + u : '—'}</b></div>
+  </div>
+  <div class="card"><div class="muted small">Daily weight</div>${chart(pts, 'entries')}</div>
+  <h2>Entries</h2>
+  <div class="card" style="padding:4px 12px">${list.slice().reverse().map(e => `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+    <span>${new Date(e.date + 'T12:00:00').toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short', year:'numeric'})}</span>
+    <span><b>${esc(e.kg)}</b> ${u} <button class="del" data-act="bw-del" data-date="${e.date}" title="Delete">✕</button></span></div>`).join('')}</div>
+  ` : `<div class="empty">No entries yet. Add today's weight above.</div>`}`;
+}
+function setBw(date, kg){
+  S.bodyweight = (S.bodyweight||[]).filter(e => e.date !== date);
+  S.bodyweight.push({date, kg, updated: Date.now()}); // kg null = deleted (so the deletion syncs)
+  save(); scheduleSync(500); render();
 }
 
 /* ============ Settings ============ */
@@ -842,6 +888,9 @@ document.addEventListener('click', e => {
     case 'swap': pickExercise(id => { const old = we; const n = newWorkoutEx(id, {sets: old.sets.length, reps: old.reps, rir: old.rir, group: old.group, note:''}); W.exercises[+t.dataset.ex] = n; save(); render(); }, 'Swap for…'); break;
     case 'del-ex': if(!we.sets.some(s=>s.done) || confirm('Remove this exercise and its sets?')){ W.exercises.splice(+t.dataset.ex, 1); save(); render(); } break;
     case 'reorder': reorderModal(); break;
+    case 'bw-save': { const d = $('#bw-date').value, kg = parseFloat(($('#bw-kg').value || '').replace(',', '.'));
+      if(!d || !(kg > 20 && kg < 400)){ alert('Enter a weight, e.g. 93.2'); return; } setBw(d, +kg.toFixed(2)); break; }
+    case 'bw-del': if(confirm('Delete this entry?')) setBw(t.dataset.date, null); break;
     case 'ro-up': case 'ro-down': case 'ro-next': {
       const i = +t.dataset.i, X = W.exercises;
       let j = a === 'ro-up' ? i - 1 : a === 'ro-down' ? i + 1 : X.findIndex(e => !e.sets.some(s => s.done));
@@ -932,6 +981,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if(t.id === 'bw-date'){ const x = bwList().find(b => b.date === t.value); $('#bw-kg').value = x ? x.kg : ''; }
   if(t.dataset.setting){ S.settings[t.dataset.setting] = t.type === 'checkbox' ? t.checked : t.value; save(); render(); }
   if(t.hasAttribute('data-import') && t.files[0]){
     const fr = new FileReader();
@@ -944,6 +994,7 @@ document.addEventListener('change', e => {
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape') closeModal();
   if(e.key === 'Enter' && e.target.matches('[data-pickfilter]')){ const first = $('#picklist [data-pick],#picklist [data-pick-new]'); first && first.click(); }
+  if(e.key === 'Enter' && e.target.id === 'bw-kg'){ $('[data-act=bw-save]').click(); }
   if(e.key === 'Enter' && e.target.dataset.f){ e.target.closest('tr').querySelector('[data-act=check]').click(); }
 });
 // Keep other tabs/windows in sync
