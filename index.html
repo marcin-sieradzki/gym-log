@@ -251,6 +251,8 @@ function save(fromSync){
 const SKEY = 'gymlog.sync';
 let SY = {};
 try{ SY = JSON.parse(localStorage.getItem(SKEY) || '{}'); }catch(e){}
+// Repo moved from marcin-sieradzki-g to marcin-sieradzki (2026-11-05)
+if(SY.repo === 'marcin-sieradzki-g/gym-log') SY.repo = 'marcin-sieradzki/gym-log';
 const saveSY = () => { try{ localStorage.setItem(SKEY, JSON.stringify(SY)); }catch(e){} };
 const syncOn = () => !!(SY.repo && SY.token);
 let syncing = false, syncAgain = false, syncT = null;
@@ -773,7 +775,7 @@ function viewSettings(){
     <h2 style="margin-top:0">Sync with GitHub</h2>
     <p class="small muted">Saves your log as a JSON file (data/gym-log.json) in your GitHub repo, so your phone and Mac share the same data. Set this up once on each device with the same token. In a public repo anyone can read this file.</p>
     <label class="small muted">Repo (owner/name)</label>
-    <input class="txt" id="sy-repo" value="${esc(SY.repo || 'marcin-sieradzki-g/gym-log')}" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input class="txt" id="sy-repo" value="${esc(SY.repo || 'marcin-sieradzki/gym-log')}" autocapitalize="off" autocorrect="off" spellcheck="false">
     <label class="small muted">Token (fine-grained, Contents: Read and write on that repo only)</label>
     <input class="txt" id="sy-token" type="password" placeholder="${SY.token ? 'Saved. Paste a new one to replace it' : 'github_pat_…'}" autocapitalize="off" autocorrect="off" spellcheck="false">
     <div class="row wrap" style="margin-top:10px">
@@ -953,7 +955,7 @@ document.addEventListener('click', e => {
     case 'sy-save': {
       const repo = $('#sy-repo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, '');
       const token = $('#sy-token').value.trim();
-      if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){ alert('Repo should look like owner/name, e.g. marcin-sieradzki-g/gym-log'); return; }
+      if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){ alert('Repo should look like owner/name, e.g. marcin-sieradzki/gym-log'); return; }
       if(!token && !SY.token){ alert('Paste your GitHub token first.'); return; }
       SY.repo = repo; if(token) SY.token = token; SY.err = ''; SY.path = SY.path || 'data/gym-log.json'; saveSY(); render(); syncNow(); break;
     }
