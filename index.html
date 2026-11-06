@@ -115,7 +115,7 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 
 // [name, category, isCompound]
 const LIB = [
-  ['Bench Press (Barbell)','Chest',1],['Bench Press (Dumbbell)','Chest',1],['Incline Dumbbell Press','Chest',1],['Incline Bench Press (Barbell)','Chest',1],['Incline Bench Press (Smith Machine)','Chest',1],['Chest Fly','Chest',0],
+  ['Bench Press (Barbell)','Chest',1],['Bench Press (Dumbbell)','Chest',1],['Incline Dumbbell Press','Chest',1],['Incline Bench Press (Barbell)','Chest',1],['Incline Bench Press (Smith Machine)','Chest',1],['Chest Fly','Chest',0],['Cable Fly','Chest',0],
   ['Machine Chest Press','Chest',1],['Dips','Chest',1],
   ['Pull-up','Back',1],['Lat Pulldown','Back',1],['Chest-Supported Row','Back',1],['Cable Row','Back',1],
   ['T-Bar Row','Back',1],['Single-Arm Cable Pulldown','Back',0],
@@ -132,30 +132,31 @@ const LIB = [
 // [exercise, sets, reps, rir, superset group, note]
 const PLAN = {
   'Upper A': [
-    ['Bench Press (Barbell)',3,'5-8','1-2','',''],
-    ['Lat Pulldown',3,'6-10','1','','Or pull-up (swap)'],
+    ['Bench Press (Barbell)',4,'5-8','1-2','',''],
+    ['Lat Pulldown',4,'6-10','1','','Or pull-up (swap)'],
     ['Cable Row',3,'8-12','1','','Seated'],
     ['Chest Fly',2,'10-15','0','','Machine or cable'],
-    ['Incline Dumbbell Curl',3,'8-12','0-1','A',''],
-    ['Overhead Dumbbell Extension',3,'8-12','0-1','A',''],
-    ['Cable Lateral Raise',2,'12-20','0','',''],
+    ['Incline Dumbbell Curl',4,'8-12','0-1','A',''],
+    ['Overhead Dumbbell Extension',4,'8-12','0-1','A',''],
+    ['Cable Lateral Raise',3,'12-20','0','',''],
   ],
   'Lower A': [
-    ['Leg Press',3,'6-10','1','','Main lift'],
-    ['Romanian Deadlift',3,'6-10','2','','Or stiff-leg deadlift'],
+    ['Leg Press',4,'6-10','1','','Main lift'],
+    ['Romanian Deadlift',4,'6-10','2','','Or stiff-leg deadlift'],
     ['Seated Leg Curl',3,'10-15','0','',''],
     ['Leg Extension',3,'10-15','0','',''],
-    ['Standing Calf Raise',3,'8-12','0','','Pause in the stretch'],
-    ['Cable Crunch',2,'10-15','','','Or machine crunch'],
+    ['Standing Calf Raise',4,'8-12','0','','Pause in the stretch'],
+    ['Cable Crunch',3,'10-15','','','Or machine crunch'],
   ],
   'Upper B': [
     ['Incline Bench Press (Smith Machine)',3,'6-10','1-2','','Log plates only (no bar weight)'],
     ['Chest-Supported Row',3,'8-12','1','','Incline dumbbell row'],
     ['Single-Arm Cable Pulldown',2,'10-15','0','','Or close-grip pulldown'],
+    ['Cable Fly',2,'12-15','0','',''],
     ['Bayesian Cable Curl',3,'10-15','0-1','A','Arm behind you'],
     ['Straight-Bar Pushdown',3,'10-15','0-1','A',''],
     ['Dumbbell Lateral Raise',2,'12-20','0','','Or Y-raise'],
-    ['Reverse Pec Deck',2,'12-20','0','',''],
+    ['Reverse Pec Deck',3,'12-20','0','',''],
   ],
   'Lower B': [
     ['Bulgarian Split Squat',3,'6-10','1','','Main lift. Short stride, upright torso. Log per-hand dumbbell weight'],
@@ -177,7 +178,7 @@ const PLAN = {
 
 // Built-in exercises and plan templates get fixed ids, so every device agrees on them when syncing
 // Bump when the plan's exercise order changes; saved templates are updated once (history untouched)
-const PLAN_V = 7;
+const PLAN_V = 8;
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const exIdFor = name => 'x-' + slug(name);
 const tplIdFor = name => 't-' + slug(name);
@@ -217,6 +218,16 @@ function migrate(){
     if(from < 6 && !changed && t.id === 't-lower-b') t.items.forEach(it => { if(it.exId === exIdFor('Lying Leg Curl')){ it.exId = exIdFor('Seated Leg Curl'); S.metaUpdated = Date.now(); } });
     // v7 (2026-10-24): Upper B incline barbell bench -> incline Smith press, edits kept
     if(from < 7 && !changed && t.id === 't-upper-b') t.items.forEach(it => { if(it.exId === exIdFor('Incline Bench Press (Barbell)')){ it.exId = exIdFor('Incline Bench Press (Smith Machine)'); it.note = 'Log plates only (no bar weight)'; S.metaUpdated = Date.now(); } });
+    // v8 (2026-11-09 volume step): +1 set on the week's first exercise per muscle, cable fly on Upper B before the arm superset; other edits kept
+    if(from < 8 && !changed && planName && ['t-upper-a','t-lower-a','t-upper-b'].includes(t.id)){
+      PLAN[planName].forEach(([ex,sets,reps,rir,group,note]) => { const it = t.items.find(i => i.exId === exIdFor(ex)); if(it && it.sets < sets) it.sets = sets; });
+      if(t.id === 't-upper-b' && !t.items.some(i => i.exId === exIdFor('Cable Fly'))){
+        let at = t.items.findIndex(i => i.group);
+        if(at < 0) at = t.items.length;
+        t.items.splice(at, 0, {exId:exIdFor('Cable Fly'), sets:2, reps:'12-15', rir:'0', group:'', note:''});
+      }
+      S.metaUpdated = Date.now();
+    }
     if(planName && changed){
       t.items = PLAN[planName].map(([ex,sets,reps,rir,group,note]) => ({exId:exIdFor(ex), sets, reps, rir, group, note}));
       S.metaUpdated = Date.now();
